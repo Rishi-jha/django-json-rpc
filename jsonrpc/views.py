@@ -6,10 +6,10 @@ from jsonrpc import mochikit
 
 
 def browse(request):
-    if (request.GET.get('f', None) == 'mochikit.js'):
+    if request.GET.get('f', None) == 'mochikit.js':
         return HttpResponse(mochikit.mochikit,
                             content_type='application/x-javascript')
-    if (request.GET.get('f', None) == 'interpreter.js'):
+    if request.GET.get('f', None) == 'interpreter.js':
         return HttpResponse(mochikit.interpreter,
                             content_type='application/x-javascript')
     desc = jsonrpc_site.service_desc()

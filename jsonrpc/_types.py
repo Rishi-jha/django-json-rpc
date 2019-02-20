@@ -48,7 +48,7 @@ class Type(type):
         return False
 
     def __str__(self):
-        return "%s(%s)" % (getattr(self, '_name', 'unknown'), getattr(
+        return "{}({})".format(getattr(self, '_name', 'unknown'), getattr(
             self, 't', None))
 
     def N(self, n):
@@ -87,3 +87,4 @@ Array = Type('Array', (object, ), {}).I(list, set, tuple).N('arr')
 Nil = Type('Nil', (object, ), {}).I(type(None)).N('nil')
 Any = Type('Any', (object, ), {}).I(
     Object, Number, Boolean, String, Array, Nil).N('any')
+NoneType = type(None)

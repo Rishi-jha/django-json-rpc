@@ -3,8 +3,8 @@ from six.moves.urllib import request as urllib_request
 from six.moves.urllib import error as urllib_error
 from django.test.client import FakePayload
 
-from jsonrpc._json import loads, dumps
-from jsonrpc._types import *
+from ._json import loads, dumps
+from ._types import *
 
 
 class ServiceProxy(object):
@@ -15,15 +15,15 @@ class ServiceProxy(object):
 
     def __getattr__(self, name):
         if self.service_name != None:
-            name = "%s.%s" % (self.service_name, name)
+            name = "{}.{}".format(self.service_name, name)
         params = dict(self.__dict__, service_name=name)
         return self.__class__(**params)
 
-    def __repr__(self):
-        return "ServiceProxy %r" % {
+    def __str__(self):
+        return "ServiceProxy {}".format({
             'jsonrpc': self.version,
             'method': self.service_name
-        }
+        })
 
     def send_payload(self, params):
         """Performs the actual sending action and returns the result"""
@@ -32,16 +32,22 @@ class ServiceProxy(object):
             'method': self.service_name,
             'params': params,
             'id': str(uuid.uuid1())
-        }).encode('utf-8')
+        }).encode()
+        print(data)
         headers = {
             'Content-Type': 'application/json-rpc',
             'Accept': 'application/json-rpc',
             'Content-Length': len(data)
         }
+        req = urllib_request.Request(self.service_url, data, headers)
+        print(req)
+        resp = urllib_request.urlopen(req)
+        print(resp)
         try:
             req = urllib_request.Request(self.service_url, data, headers)
             resp = urllib_request.urlopen(req)
         except IOError as e:
+            print(e)
             if isinstance(e, urllib_error.HTTPError):
                 if e.code not in (
                         401, 403
@@ -65,7 +71,7 @@ class ServiceProxy(object):
             try:
                 from django.conf import settings
                 if settings.DEBUG:
-                    print('JSONRPC: %s error %r' % (self.service_name, y))
+                    print('JSONRPC: {} error {}'.format(self.service_name, y))
             except:
                 pass
         return y

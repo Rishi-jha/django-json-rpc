@@ -1,6 +1,4 @@
-import datetime, decimal
 import sys
-from functools import wraps
 from uuid import uuid1
 from jsonrpc._json import loads, dumps
 from jsonrpc.exceptions import *
@@ -8,16 +6,25 @@ from jsonrpc._types import *
 from django.conf import settings
 from django.core import signals
 from django.utils.encoding import smart_text
-empty_dec = lambda f: f
+from django.core.serializers.json import DjangoJSONEncoder
+
+
+def empty_dec(f):
+    """
+    An empty decorator
+    :param f: function
+    :return: function
+    """
+    return f
+
+
 try:
     from django.views.decorators.csrf import csrf_exempt
 except (NameError, ImportError):
     csrf_exempt = empty_dec
 
-from django.core.serializers.json import DjangoJSONEncoder
 
-NoneType = type(None)
-encode_kw = lambda p: dict([(str(k), v) for k, v in p.items()])
+encode_kw = lambda to_encode: {str(key): value for key, value in to_encode.items()}
 
 
 def trim_docstring(docstring):
@@ -46,189 +53,212 @@ def trim_docstring(docstring):
     return '\n'.join(trimmed)
 
 
-def encode_kw11(p):
-    if not type(p) is dict:
-        return {}
-    ret = p.copy()
-    removes = []
-    for k, v in ret.items():
+def encode_kw11(to_encode):
+    """
+    The function to encode kwargs.
+    :param: to_encode: kwargs to encode.
+    :return: encoded kwargs: dict
+    """
+    encoded_kw = {}
+    if not isinstance(to_encode, dict):
+        return encoded_kw
+    
+    for k, v in to_encode.items():
         try:
             int(k)
         except ValueError:
-            pass
-        else:
-            removes.append(k)
-    for k in removes:
-        ret.pop(k)
-    return ret
+            encoded_kw.update({k: v})
+    return encoded_kw
 
-
-def encode_arg11(p):
-    if type(p) is list:
-        return p
-    elif not type(p) is dict:
-        return []
-    else:
-        pos = []
-        d = encode_kw(p)
-        for k, v in d.items():
+def encode_arg11(to_encode):
+    """
+    The function to encode args.
+    :param: to_encode: args to encode.
+    :return: encoded args: dict
+    """
+    encoded_args = set()
+    if isinstance(to_encode, list):
+        return to_encode
+    elif isinstance(to_encode, dict):
+        _ = encode_kw(to_encode)
+        for key in _.keys():
             try:
-                pos.append(int(k))
+                int(key)
             except ValueError:
                 pass
-        pos = list(set(pos))
-        pos.sort()
-        return [d[str(i)] for i in pos]
+            else:
+                encoded_args.add(str(key))
+        
+        encoded_args = [_[key] for key in sorted(encoded_args)]
+        return encoded_args
 
-
-def validate_params(method, D):
-    if type(D['params']) == Object:
-        keys = list(method.json_arg_types.keys())
-        if len(keys) != len(D['params']):
-            raise InvalidParamsError('Not enough params provided for %s' %
-                                     method.json_sig)
-        for k in keys:
-            if not k in D['params']:
-                print('\n\n\n\nSHITTER SHITTER', k, D, '\n\n\n\n')
-                raise InvalidParamsError('%s is not a valid parameter for %s' %
-                                         (k, method.json_sig))
-            if not Any.kind(D['params'][k]) == method.json_arg_types[k]:
-                raise InvalidParamsError(
-                    '%s is not the correct type %s for %s' %
-                    (type(D['params'][k]), method.json_arg_types[k],
-                     method.json_sig))
-    elif type(D['params']) == Array:
+def validate_params(method, attributes):
+    """
+    Function to validate parameters.
+    :param method: Type of HTTP method.
+    :param attributes: parameters.
+    """
+    print(method.json_arg_types.keys())
+    if type(attributes['params']) == Object:
+        keys = method.json_arg_types.keys()
+        if len(keys) != len(attributes['params']):
+            raise InvalidParamsError('Not enough params provided for '
+                                     '{}'.format(
+                                         method.json_sig))
+        for key in keys:
+            if not key in attributes['params']:
+                print('\n\n\n\nSHITTER SHITTER', key, attributes, '\n\n\n\n')
+                raise InvalidParamsError("{} is not a valid parameter for "
+                                         "{}".format(key, method.json_sig))
+            if not Any.kind(
+                    attributes['params'][key])==method.json_arg_types[key]:
+                raise InvalidParamsError('{} is not the correct type {} '
+                                         'for {}'.format(
+                                             type(attributes['params'][key]),
+                                             method.json_arg_types[key],
+                                             method.json_sig))
+    elif type(attributes['params']) == Array:
+        print(attributes)
         arg_types = list(method.json_arg_types.values())
         try:
-            for i, arg in enumerate(D['params']):
-                if not Any.kind(arg) == arg_types[i]:
-                    raise InvalidParamsError(
-                        '%s is not the correct type %s for %s' %
-                        (type(arg), arg_types[i], method.json_sig))
+            for index, arg in enumerate(attributes['params']):
+                if not Any.kind(arg) == arg_types[index]:
+                    raise InvalidParamsError('{} is not the correct type '
+                                             '{} for {}'.format(
+                                                 type(arg), arg_types[index],
+                                                 method.json_sig))
         except IndexError:
-            raise InvalidParamsError('Too many params provided for %s' %
-                                     method.json_sig)
+            raise InvalidParamsError('Too many params provided for '
+                                     '{}'.format(method.json_sig))
         else:
-            if len(D['params']) != len(arg_types):
-                raise InvalidParamsError('Not enough params provided for %s' %
-                                         method.json_sig)
+            if len(attributes['params']) != len(arg_types):
+                raise InvalidParamsError('Not enough params provided '
+                                         'for {}'.format(method.json_sig))
 
 
-class JSONRPCSite(object):
-    "A JSON-RPC Site"
+class JsonRpcSite(object):
+    """A JSON-RPC Site"""
 
     def __init__(self, json_encoder=DjangoJSONEncoder):
+        """
+        Constructor for JsonRpcSite.
+        :param json_encoder: type of Json Encoder. Default to DjangoJSONEncoder
+        """
         self.urls = {}
-        self.uuid = str(uuid1())
+        self.uuid = uuid1()
         self.version = '1.0'
         self.name = 'django-json-rpc'
         self.register('system.describe', self.describe)
-        self.set_json_encoder(json_encoder)
-
-    def set_json_encoder(self, json_encoder=DjangoJSONEncoder):
         self.json_encoder = json_encoder
+        self.available_versions = ['2.0', '1.1', '1.0']
 
-    def register(self, name, method):
-        self.urls[smart_text(name)] = method
-
-    def empty_response(self, version='1.0'):
-        resp = {'id': None}
-        if version == '1.1':
-            resp['version'] = version
-            return resp
+    def _empty_response(self, version='1.0'):
+        """
+        Method to provide empty response
+        :param version: Version of JSON RPC
+        :return: Empty Response
+        """
+        response = {'id': None}
         if version == '2.0':
-            resp['jsonrpc'] = version
-        resp.update({'error': None, 'result': None})
-        return resp
+            response.update({'error': None, 'result': None, 'jsonrpc': version})
+        if version == '1.1':
+            response['version'] = version
+        return response
 
-    def validate_get(self, request, method):
-        encode_get_params = lambda r: dict([(k, v[0] if len(v) == 1 else v) for k, v in r])
-        if request.method == 'GET':
-            method = smart_text(method)
-            if method in self.urls and getattr(self.urls[method], 'json_safe',
-                                                   False):
-                D = {
-                    'params': encode_get_params(request.GET.lists()),
-                    'method': method,
-                    'id': 'jsonrpc',
-                    'version': '1.1'
-                }
-                return True, D
-        return False, {}
+    def _validate_get(self, request, method):
+        """
+        :param request: Request instance
+        :param method: http method
+        :return: tuple of "if request is valid and data.
+        """
+        if not request.method == "GET":
+            return False, {}
 
-    def response_dict(self, request, D,
-                      is_batch=False,
-                      version_hint='1.0',
-                      json_encoder=None):
+        encoded_params = lambda req: {key: value[0] if len(value) == 1 else value for key, value in req}
+        method = smart_text(method)
+        if method in self.urls and getattr(self.urls[method], 'json_safe', False):
+            data = {
+                'params': encoded_params(request.GET.lists()),
+                'method': method,
+                'id': 'jsonrpc',
+                'version': '1.1'
+            }
+            return True, data
+
+    def _response_dict(self, request, data, is_batch=False, version='1.0',
+                       json_encoder=None):
+        """
+        Method to get the response for the request.
+        :param request: request for json rpc
+        :param data: parameters associated with the request
+        :param is_batch: defaults to false
+        :param version: JSON RPC version
+        :param json_encoder: Json Encoder
+        :return: response, status code
+        """
         json_encoder = json_encoder or self.json_encoder
-        version = version_hint
-        response = self.empty_response(version=version)
-        apply_version = {
-            '2.0':
-            lambda f, r, p: f(r, **encode_kw(p)) if type(p) is dict else f(r, *p),
-            '1.1':
-            lambda f, r, p: f(r, *encode_arg11(p), **encode_kw(encode_kw11(p))),
-            '1.0': lambda f, r, p: f(r, *p)
-        }
+        response = self._empty_response(version=version)
+
+        def apply_version(function, req, param, version):
+            if version == '1.1':
+                return function(req, *encode_arg11(param),
+                                **encode_kw(encode_kw11(param)))
+            if isinstance(param, dict):
+                return function(req, **encode_kw(param))
+            return function(req, *param)
 
         try:
-            # params: An Array or Object, that holds the actual parameter values
-            # for the invocation of the procedure. Can be omitted if empty.
-            if 'params' not in D:
-                D['params'] = []
-            if 'method' not in D or 'params' not in D:
-                raise InvalidParamsError(
-                    'Request requires str:"method" and list:"params"')
-            if D['method'] not in self.urls:
-                raise MethodNotFoundError(
-                    'Method not found. Available methods: %s' % (
-                        '\n'.join(self.urls.keys())))
+            if 'params' not in data:
+                data['params'] = []
+            if 'method' not in data:
+                raise InvalidParamsError("Request requires str: 'method' and "
+                                         "list: 'params'.")
+            if data['method'] not in self.urls:
+                raise MethodNotFoundError("Method not found, "
+                                          "Available methods:\n\t{}".format(
+                                              "\n\t".join(self.urls.keys())))
 
-            if 'jsonrpc' in D:
-                if str(D['jsonrpc']) not in apply_version:
+            v_key = ''
+            if 'jsonrpc' in data:
+                v_key = 'jsonrpc'
+            elif 'version' in data:
+                v_key = 'version'
+
+            try:
+
+                if str(data[v_key]) not in self.available_versions:
                     raise InvalidRequestError(
-                        'JSON-RPC version %s not supported.' % D['jsonrpc'])
-                version = request.jsonrpc_version = response['jsonrpc'] = str(
-                    D['jsonrpc'])
-            elif 'version' in D:
-                if str(D['version']) not in apply_version:
-                    raise InvalidRequestError(
-                        'JSON-RPC version %s not supported.' % D['version'])
-                version = request.jsonrpc_version = response['version'] = str(
-                    D['version'])
-            else:
+                        "JSON-RPC version {} not supported.Please raise bug @ "
+                        "https://github.com/Rishi-jha/django-json-rpc".format(
+                            data[v_key]))
+                version = request.jsonrpc_version = response[v_key] = str(data['version'])
+            except KeyError:
                 request.jsonrpc_version = '1.0'
 
-            method = self.urls[str(D['method'])]
+            method = self.urls[str(data['method'])]
             if getattr(method, 'json_validate', False):
-                validate_params(method, D)
+                validate_params(method, data)
 
-            if 'id' in D and D['id'] is not None:  # regular request
-                response['id'] = D['id']
+            if 'id' in data and data['id'] is not None:
+                response['id'] = data['id']
                 if version in ('1.1', '2.0') and 'error' in response:
                     response.pop('error')
-            elif is_batch:  # notification, not ok in a batch format, but happened anyway
-                raise InvalidRequestError
+            elif is_batch:
+                raise InvalidRequestError("Not ok in batch format")
 
-            R = apply_version[version](method, request, D['params'])
-
-            if 'id' not in D or ('id' in D and D['id'] is None):  # notification
+            _result = apply_version(method, request, data['params'], version)
+            if not data.get('id'):
                 return None, 204
-
-            if isinstance(R, tuple):
-                R = list(R)
-
+            _result = list(_result) if isinstance(_result, tuple) else _result
             encoder = json_encoder()
-            builtin_types = (dict, list, set, NoneType, bool, six.text_type
-                       ) + six.integer_types + six.string_types
-            if all(not isinstance(R, e) for e in builtin_types):
+            _builtin_types = set((dict, list, set, NoneType, bool, six.text_type) + six.integer_types + six.string_types)
+            if not any(isinstance(_result, ty) for ty in _builtin_types):
                 try:
-                    rs = encoder.default(R)  # ...or something this thing supports
-                except TypeError as exc:
-                    raise TypeError("Return type not supported, for %r" % R)
+                    encoder.default(_result)
+                except KeyError:
+                    raise TypeError("Return type not supported for {}".format(_result))
 
-            response['result'] = R
-
+            response['result'] = _result
             status = 200
 
         except Error as e:
@@ -236,8 +266,9 @@ class JSONRPCSite(object):
             if version in ('1.1', '2.0') and 'result' in response:
                 response.pop('result')
             status = e.status
+
         except Exception as e:
-            # exception missed by others
+
             signals.got_request_exception.send(sender=self.__class__,
                                                request=request)
 
@@ -254,51 +285,57 @@ class JSONRPCSite(object):
 
         # Exactly one of result or error MUST be specified. It's not
         # allowed to specify both or none.
-        if version in ('1.1', '2.0'
-                   ) and 'error' in response and not response['error']:
+        if version in ('1.1', '2.0') and not response.get('error'):
             response.pop('error')
 
         return response, status
 
     @csrf_exempt
     def dispatch(self, request, method='', json_encoder=None):
+        """
+        dispatch method for registering apps
+        :param request: Request to process
+        :param method: type of method
+        :param json_encoder: json encdoer
+        :return: response
+        """
         from django.http import HttpResponse
         json_encoder = json_encoder or self.json_encoder
 
+
         try:
-            # in case we do something json doesn't like, we always get back valid json-rpc response
-            response = self.empty_response()
-            if request.method.lower() == 'get':
-                valid, D = self.validate_get(request, method)
-                if not valid:
-                    raise InvalidRequestError(
-                        'The method you are trying to access is '
-                        'not available by GET requests')
-            elif not request.method.lower() == 'post':
+            response = self._empty_response()
+            if request.method.upper() == 'GET':
+                is_valid, data = self._validate_get(request, method)
+                if not is_valid:
+                    raise InvalidRequestError("The method you are trying to "
+                                              "access is not available by GET "
+                                              "requests")
+            elif not request.method.upper() == 'POST':
                 raise RequestPostError
             else:
                 try:
                     if hasattr(request, "body"):
-                        D = loads(request.body.decode('utf-8'))
+                        data = loads(request.body.decode('utf-8'))
                     else:
-                        D = loads(request.raw_post_data.decode('utf-8'))
+                        data = loads(request.raw_post_data.decode('utf-8'))
                 except:
                     raise InvalidRequestError
-
-            if type(D) is list:
-                response = [self.response_dict(request, d,
-                                               is_batch=True,
-                                               json_encoder=json_encoder)[0]
-                            for d in D]
+            if isinstance(data, list):
+                response = [self._response_dict(request, data=d,
+                                                is_batch=True,
+                                                json_encoder=json_encoder)[0]
+                            for d in data]
                 status = 200
             else:
-                response, status = self.response_dict(
-                    request, D,
+                response, status = self._response_dict(
+                    request, data,
                     json_encoder=json_encoder)
-                if response is None and (not 'id' in D or D['id'] is None):  # a notification
+                if response is None and not data.get('id'):
                     return HttpResponse('', status=status)
 
             json_rpc = dumps(response, cls=json_encoder)
+
         except Error as e:
             response['error'] = e.json_rpc_format
             status = e.status
@@ -324,30 +361,44 @@ class JSONRPCSite(object):
                             status=status,
                             content_type='application/json-rpc')
 
+
     def procedure_desc(self, key):
-        M = self.urls[key]
+        """
+        describing the procedure
+        :param key: method name
+        :return: dict
+        """
+        method = self.urls[key]
         return {
-            'name': M.json_method,
-            'summary': trim_docstring(M.__doc__),
-            'idempotent': M.json_safe,
+            'name': method.json_method,
+            'summary': trim_docstring(method.__doc__),
+            'idempotent': method.json_safe,
             'params': [{'type': str(Any.kind(t)),
-                        'name': k} for k, t in M.json_arg_types.items()],
-            'return': {'type': str(M.json_return_type)}
+                        'name': k} for k, t in method.json_arg_types.items()],
+            'return': {'type': str(method.json_return_type)}
         }
 
     def service_desc(self):
+        """
+        Describing the service
+        :return: dict
+        """
         return {
             'sdversion': '1.0',
             'name': self.name,
-            'id': 'urn:uuid:%s' % str(self.uuid),
+            'id': 'urn:uuid:{}'.format(self.uuid),
             'summary': trim_docstring(self.__doc__),
             'version': self.version,
-            'procs': [self.procedure_desc(k) for k in self.urls.keys()
-                      if self.urls[k] != self.describe]
+            'procs': [self.procedure_desc(key) for key in self.urls.keys()
+                      if self.urls[key] != self.describe]
         }
 
     def describe(self, request):
         return self.service_desc()
 
+    def register(self, name, method):
+        self.urls[smart_text(name)] = method
 
-jsonrpc_site = JSONRPCSite()
+
+
+jsonrpc_site = JsonRpcSite()

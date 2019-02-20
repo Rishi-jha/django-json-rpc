@@ -1,0 +1,32 @@
+Metadata-Version: 1.1
+Name: json-rpc-django
+Version: 1.0.0
+Summary: A simple JSON-RPC implementation for Django. An extension of django-json-rpc by Samuel Sutch
+Home-page: https://github.com/Rishi-jha/django-json-rpc
+Author: Rishikesh Jha
+Author-email: rishijha424@gmail.com
+License: MIT
+Download-URL: https://github.com/Rishi-jha/django-json-rpc
+Description: UNKNOWN
+Platform: UNKNOWN
+Classifier: Development Status :: 5 - Production/Stable
+Classifier: Environment :: Web Environment
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python
+Classifier: Programming Language :: Python :: 2.6
+Classifier: Programming Language :: Python :: 2.7
+Classifier: Programming Language :: Python :: 3.2
+Classifier: Programming Language :: Python :: 3.3
+Classifier: Programming Language :: Python :: 3.4
+Classifier: Programming Language :: Python :: 3.5
+Classifier: Programming Language :: Python :: 3.7
+Classifier: Topic :: Software Development :: Libraries :: Python Modules
+Classifier: Framework :: Django
+Classifier: Framework :: Django :: 1.4
+Classifier: Framework :: Django :: 1.5
+Classifier: Framework :: Django :: 1.6
+Classifier: Framework :: Django :: 1.7
+Classifier: Framework :: Django :: 1.8
+Classifier: Framework :: Django :: 2.1

@@ -34,8 +34,8 @@ class Error(Exception):
         error = {
             'name': smart_text(self.__class__.__name__),
             'code': self.code,
-            'message': "%s: %s" %
-            (smart_text(self.__class__.__name__), smart_text(self.message)),
+            'message': "{}: {}".format(smart_text(self.__class__.__name__),
+                                       smart_text(self.message)),
             'data': self.data
         }
 

@@ -1,18 +1,12 @@
 import re
 import sys
-import six
 from inspect import getargspec
 from jsonrpc.site import jsonrpc_site
 from jsonrpc._types import *
 from jsonrpc.exceptions import *
 
-try:
-    from collections import OrderedDict
-except ImportError:
-    # Use SortedDict instead of OrderedDict for python < 2.7
-    # Can be removed when support for Django < 1.7 is dropped
-    # https://docs.djangoproject.com/en/1.7/releases/1.7/#django-utils-datastructures-sorteddict
-    from django.utils.datastructures import SortedDict as OrderedDict
+from collections import OrderedDict
+
 
 default_site = jsonrpc_site
 KWARG_RE = re.compile(
@@ -31,14 +25,12 @@ def _type_checking_available(sig='', validate=False):
         raise JSONRPCTypeCheckingUnavailable(
             'Type checking is not available in your version of Python '
             'which is only available in Python 2.6 or later. Use Python 2.6 '
-            'or later or disable type checking in %s' % sig)
+            'or later or disable type checking in {}'.format(sig))
 
 
 def _validate_arg(value, expected):
-    "Returns whether or not ``value`` is the ``expected`` type."
-    if type(value) == expected:
-        return True
-    return False
+    """Returns whether or not ``value`` is the ``expected`` type."""
+    return isinstance(value, expected)
 
 
 def _eval_arg_type(arg_type, T=Any, arg=None, sig=None):
@@ -57,12 +49,13 @@ def _eval_arg_type(arg_type, T=Any, arg=None, sig=None):
         T = eval(arg_type)
     except Exception as e:
         raise ValueError(
-            'The type of %s could not be evaluated in %s for %s: %s' %
-            (arg_type, arg, sig, str(e)))
+            'The type of {} could not be evaluated in {} for {}: {}'.format(
+                arg_type, arg, sig, str(e)))
     else:
         if type(T) not in (type, Type):
             raise TypeError(
-                '%s is not a valid type in %s for %s' % (repr(T), arg, sig))
+                '{} is not a valid type in {} for {}'.format(
+                    repr(T), arg, sig))
         return T
 
 
@@ -80,32 +73,32 @@ def _parse_sig(sig, arg_names, validate=False):
     """
     d = SIG_RE.match(sig)
     if not d:
-        raise ValueError('Invalid method signature %s' % sig)
+        raise ValueError('Invalid method signature {}'.format(sig))
     d = d.groupdict()
     ret = [(n, Any) for n in arg_names]
-    if 'args_sig' in d and type(
-            d['args_sig']) is str and d['args_sig'].strip():
+    if ('args_sig' in d and isinstance(d['args_sig'], str)
+            and d['args_sig'].strip()):
         for i, arg in enumerate(d['args_sig'].strip().split(',')):
             _type_checking_available(sig, validate)
             if '=' in arg:
-                if not type(ret) is OrderedDict:
+                if not isinstance(ret, OrderedDict):
                     ret = OrderedDict(ret)
                 dk = KWARG_RE.match(arg)
                 if not dk:
-                    raise ValueError('Could not parse arg type %s in %s' %
-                                     (arg, sig))
+                    raise ValueError('Could not parse arg type {} '
+                                     'in {}'.format(arg, sig))
                 dk = dk.groupdict()
                 if not sum(
                     [(k in dk and type(dk[k]) is str and bool(dk[k].strip()))
                          for k in ('arg_name', 'arg_type')]):
-                    raise ValueError('Invalid kwarg value %s in %s' %
-                                     (arg, sig))
+                    raise ValueError('Invalid kwarg value {} in {}'.format(
+                        arg, sig))
                 ret[dk['arg_name']] = _eval_arg_type(dk['arg_type'], None, arg,
                                                      sig)
             else:
                 if type(ret) is OrderedDict:
                     raise ValueError('Positional arguments must occur '
-                                     'before keyword arguments in %s' % sig)
+                                     'before keyword arguments in {}'.format(sig))
                 if len(ret) < i + 1:
                     ret.append((str(i), _eval_arg_type(arg, None, arg, sig)))
                 else:
@@ -130,11 +123,11 @@ def _inject_args(sig, types):
     """
     if '(' in sig:
         parts = sig.split('(')
-        sig = '%s(%s%s%s' % (
+        sig = '{}({}{}{}'.format(
             parts[0], ', '.join(types),
             (', ' if parts[1].index(')') > 0 else ''), parts[1])
     else:
-        sig = '%s(%s)' % (sig, ', '.join(types))
+        sig = '{}({})'.format(sig, ', '.join(types))
     return sig
 
 
@@ -233,8 +226,10 @@ def jsonrpc_method(name,
                         except KeyError:
                             raise InvalidParamsError(
                                 'Authenticated methods require at least '
-                                '[%(arguments)s] or {%(arguments)s} arguments' %
-                                {'arguments': ', '.join(authentication_arguments)})
+                                '[{arguments}] or {{{arguments}}} '
+                                'arguments'.format(
+                                    arguments=', '.join(
+                                        authentication_arguments)))
 
                         user = _authenticate(**auth_kwargs)
                         if user is not None:
@@ -263,7 +258,7 @@ def jsonrpc_method(name,
         ret_func = exc_printer
 
         method, arg_types, return_type = \
-      _parse_sig(X['name'], X['arg_names'], validate)
+        _parse_sig(X['name'], X['arg_names'], validate)
         ret_func.json_args = X['arg_names']
         ret_func.json_arg_types = arg_types
         ret_func.json_return_type = return_type

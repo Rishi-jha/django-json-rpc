@@ -1,10 +1,5 @@
-try:
-    import json
-except (ImportError, NameError):
-    try:
-        from django.utils import simplejson as json
-    except (ImportError, NameError):
-        import simplejson as json
+import json
+
 try:
     json.dumps
     json.loads
@@ -15,7 +10,7 @@ except AttributeError:
     except AttributeError:
         raise ImportError('Could not load an appropriate JSON library '
                           'currently supported are simplejson, '
-                          'python2.6 json and python-json')
+                          'python3.7 json and python-json')
 
 loads = json.loads
 dumps = json.dumps
